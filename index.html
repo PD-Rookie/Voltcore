@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#04060d">
+  <meta name="description" content="VOLTCORE // Deflect Protocol — a neon arcade defense game. Turn incoming fire into your weapon.">
+  <title>VOLTCORE // Deflect Protocol</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%2304060d' stroke='%235ff5ff' stroke-width='4'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%23ffd166'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <canvas id="game" aria-label="VOLTCORE game arena"></canvas>
+
+    <div class="scanlines" aria-hidden="true"></div>
+    <div class="vignette" aria-hidden="true"></div>
+
+    <!-- ============================================================
+         Live HUD
+         ============================================================ -->
+    <div id="hud" hidden>
+      <div class="hud-top">
+        <div class="hud-block score-box">
+          <span class="label">Score</span>
+          <div class="score-row">
+            <strong id="scoreValue">0</strong>
+            <span id="multValue" class="multiplier">x1.0</span>
+          </div>
+        </div>
+
+        <div class="hud-block wave-box">
+          <span class="label">Wave</span>
+          <strong id="waveValue" class="wave-num">01</strong>
+          <div class="wave-track"><i id="waveBar"></i></div>
+        </div>
+
+        <div class="hud-block core-box">
+          <span class="label">Core</span>
+          <div id="healthPips" class="health-pips" aria-label="Core integrity"></div>
+        </div>
+      </div>
+
+      <div id="comboBox" class="combo-box" hidden>
+        <span class="label">Chain</span>
+        <strong id="comboValue">0</strong>
+        <span id="comboMult">x1.0</span>
+      </div>
+    </div>
+
+    <!-- Utility controls stay above overlays. -->
+    <div class="hud-actions">
+      <button id="muteBtn" class="mini-btn" type="button" aria-label="Toggle sound" aria-pressed="false">SND ON</button>
+      <button id="pauseBtn" class="mini-btn" type="button" aria-label="Pause game" hidden>PAUSE</button>
+    </div>
+
+    <!-- Nova charge / detonation -->
+    <button id="novaBtn" class="nova-btn" type="button" hidden aria-label="Activate nova" style="--p: 0%">
+      <span class="nova-inner">
+        <span class="nova-label">NOVA</span>
+        <span id="novaPct" class="nova-key">0%</span>
+      </span>
+    </button>
+
+    <div id="aimHint" class="aim-hint" hidden>MOVE / DRAG TO ROTATE SHIELD</div>
+    <div id="damageFlash" class="damage-flash" aria-hidden="true"></div>
+    <div id="toastStack" aria-live="polite" aria-atomic="false"></div>
+
+    <!-- ============================================================
+         Start screen
+         ============================================================ -->
+    <section id="startScreen" class="screen">
+      <main class="panel start-panel">
+        <div class="eyebrow">Arcade Defense Protocol</div>
+        <h1 class="logo"><span class="volt">VOLT</span><span class="core">CORE</span></h1>
+        <div class="logo-rule"><i></i><span>Deflect Protocol</span><i></i></div>
+        <p class="tagline">Turn their fire into your weapon. Hold the core, chain perfect parries, and break the grid.</p>
+
+        <div class="howto">
+          <div class="step">
+            <b>01 // AIM</b>
+            <span>Move your mouse or drag to rotate the hardlight shield.</span>
+          </div>
+          <div class="step">
+            <b>02 // DEFLECT</b>
+            <span>Catch incoming shots. Perfect parries fire straight back and build flux.</span>
+          </div>
+          <div class="step">
+            <b>03 // DETONATE</b>
+            <span>Fill the meter, then unleash NOVA to erase bullets and shred the grid.</span>
+          </div>
+        </div>
+
+        <div class="record-row">
+          <div>
+            <span class="mini-label">Best Score</span>
+            <strong id="bestScore">0</strong>
+          </div>
+          <div>
+            <span class="mini-label">Best Wave</span>
+            <strong id="bestWave">1</strong>
+          </div>
+          <div>
+            <span class="mini-label">Achievements</span>
+            <strong id="achCount">0 / 6</strong>
+          </div>
+        </div>
+
+        <button id="playBtn" class="btn btn-primary play-btn" type="button">Initialize Core</button>
+        <p class="controls-line">MOUSE / TOUCH AIM &nbsp;&middot;&nbsp; SPACE NOVA &nbsp;&middot;&nbsp; P PAUSE &nbsp;&middot;&nbsp; M MUTE</p>
+
+        <div class="ach-wrap">
+          <span class="mini-label">Field Records</span>
+          <div id="achievementList" class="ach-list"></div>
+        </div>
+      </main>
+    </section>
+
+    <!-- ============================================================
+         Pause screen
+         ============================================================ -->
+    <section id="pauseScreen" class="screen" hidden>
+      <div class="panel pause-panel">
+        <div class="eyebrow">System Hold</div>
+        <h2>Paused</h2>
+        <p>Shield telemetry frozen. The grid will wait for you.</p>
+        <div class="button-row">
+          <button id="resumeBtn" class="btn btn-primary" type="button">Resume</button>
+          <button id="pauseRestartBtn" class="btn" type="button">Restart Run</button>
+          <button id="pauseMenuBtn" class="btn" type="button">Main Menu</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         Upgrade screen
+         ============================================================ -->
+    <section id="upgradeScreen" class="screen" hidden>
+      <div class="panel upgrade-panel">
+        <div class="eyebrow">Wave Cleared</div>
+        <h2>Install Upgrade</h2>
+        <p>Choose one system mod. Every wave gets louder from here.</p>
+        <div id="upgradeGrid" class="upgrade-grid"></div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         Game over screen
+         ============================================================ -->
+    <section id="gameOverScreen" class="screen" hidden>
+      <div class="panel gameover-panel">
+        <div class="eyebrow">Run Terminated</div>
+        <h2 class="result-title">Core Breach</h2>
+        <div id="newBest" class="new-best" hidden>New High Score</div>
+
+        <div class="stats-grid">
+          <div class="stat-card"><span>Final Score</span><strong id="finalScore">0</strong></div>
+          <div class="stat-card"><span>Wave Reached</span><strong id="finalWave">1</strong></div>
+          <div class="stat-card"><span>Best Chain</span><strong id="finalCombo">0</strong></div>
+          <div class="stat-card"><span>Enemies Broken</span><strong id="finalKills">0</strong></div>
+          <div class="stat-card"><span>Shots Deflected</span><strong id="finalDeflects">0</strong></div>
+          <div class="stat-card"><span>Survival</span><strong id="finalTime">0:00</strong></div>
+        </div>
+
+        <p id="gameOverAch" class="ach-note"></p>
+
+        <div class="button-row">
+          <button id="againBtn" class="btn btn-primary" type="button">Run Again</button>
+          <button id="shareBtn" class="btn" type="button">Share Run</button>
+          <button id="menuBtn" class="btn" type="button">Main Menu</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
