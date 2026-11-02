@@ -1791,13 +1791,15 @@
   }
 
   function spawnEnemyBullet(x, y, angle, speed, radius, kind) {
-    const color = kind === "split"
-      ? "#b48cff"
-      : kind === "shard"
-        ? "#d0b8ff"
-        : kind === "fast"
-          ? "#ff9a62"
-          : "#ff4fa3";
+    const color = colorize(
+      kind === "split"
+        ? "#b48cff"
+        : kind === "shard"
+          ? "#d0b8ff"
+          : kind === "fast"
+            ? "#ff9a62"
+            : "#ff4fa3"
+    );
 
     game.bullets.push({
       x,
@@ -2831,7 +2833,7 @@
 
       if (bullet.kind === "split") {
         ctx.globalAlpha = 0.55;
-        ctx.strokeStyle = "#d8c8ff";
+        ctx.strokeStyle = colorize("#d8c8ff");
         ctx.lineWidth = 1.2;
         ctx.beginPath();
         ctx.arc(bullet.x, bullet.y, bullet.r + 4, 0, TAU);
