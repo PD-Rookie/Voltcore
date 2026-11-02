@@ -46,12 +46,27 @@
         <strong id="comboValue">0</strong>
         <span id="comboMult">x1.0</span>
       </div>
+
+      <div id="bossBar" class="boss-bar" hidden aria-hidden="true">
+        <div class="boss-bar-head">
+          <span class="boss-name">SENTINEL</span>
+          <span id="bossPhase" class="boss-phase">PHASE 1</span>
+        </div>
+        <div class="boss-track"><i id="bossFill"></i></div>
+      </div>
     </div>
 
     <!-- Utility controls stay above overlays. -->
     <div class="hud-actions">
       <button id="muteBtn" class="mini-btn" type="button" aria-label="Toggle sound" aria-pressed="false">SND ON</button>
       <button id="pauseBtn" class="mini-btn" type="button" aria-label="Pause game" hidden>PAUSE</button>
+      <button id="fullscreenBtn" class="mini-btn" type="button" aria-label="Toggle fullscreen" aria-pressed="false">FULL</button>
+    </div>
+
+    <!-- On-screen rotation for touch devices -->
+    <div id="touchTurn" class="touch-turn" hidden>
+      <button id="turnLeftBtn" class="touch-turn-btn" type="button" aria-label="Rotate shield left">&#8249;</button>
+      <button id="turnRightBtn" class="touch-turn-btn" type="button" aria-label="Rotate shield right">&#8250;</button>
     </div>
 
     <!-- Nova charge / detonation -->
@@ -65,6 +80,7 @@
     <div id="aimHint" class="aim-hint" hidden>MOVE / DRAG TO ROTATE SHIELD</div>
     <div id="damageFlash" class="damage-flash" aria-hidden="true"></div>
     <div id="toastStack" aria-live="polite" aria-atomic="false"></div>
+    <p id="srStatus" class="sr-only" role="status" aria-live="polite"></p>
 
     <!-- ============================================================
          Start screen
@@ -102,12 +118,22 @@
           </div>
           <div>
             <span class="mini-label">Achievements</span>
-            <strong id="achCount">0 / 6</strong>
+            <strong id="achCount">0 / 8</strong>
+          </div>
+        </div>
+
+        <div class="mode-row" role="group" aria-label="Difficulty">
+          <span class="mini-label">Difficulty</span>
+          <div id="difficultyGroup" class="segmented">
+            <button class="seg-btn active" type="button" data-difficulty="normal" aria-pressed="true">Normal</button>
+            <button class="seg-btn" type="button" data-difficulty="hard" aria-pressed="false">Hard</button>
           </div>
         </div>
 
         <button id="playBtn" class="btn btn-primary play-btn" type="button">Initialize Core</button>
         <p class="controls-line">MOUSE / TOUCH AIM &nbsp;&middot;&nbsp; SPACE NOVA &nbsp;&middot;&nbsp; P PAUSE &nbsp;&middot;&nbsp; M MUTE</p>
+
+        <button id="settingsBtn" class="btn btn-ghost settings-btn" type="button">Settings</button>
 
         <div class="ach-wrap">
           <span class="mini-label">Field Records</span>
@@ -127,6 +153,7 @@
         <div class="button-row">
           <button id="resumeBtn" class="btn btn-primary" type="button">Resume</button>
           <button id="pauseRestartBtn" class="btn" type="button">Restart Run</button>
+          <button id="pauseSettingsBtn" class="btn" type="button">Settings</button>
           <button id="pauseMenuBtn" class="btn" type="button">Main Menu</button>
         </div>
       </div>
@@ -145,11 +172,53 @@
     </section>
 
     <!-- ============================================================
+         Settings and accessibility
+         ============================================================ -->
+    <section id="settingsScreen" class="screen" hidden>
+      <div class="panel settings-panel">
+        <div class="eyebrow">System Config</div>
+        <h2>Settings</h2>
+        <p>Tune the grid to your hardware, your controls, and your eyes.</p>
+
+        <div class="settings-group">
+          <span class="mini-label">Accessibility</span>
+          <label class="toggle-row">
+            <span class="toggle-copy">
+              <strong>Colorblind palette</strong>
+              <em>Swap hostile colors to a colorblind-safe set.</em>
+            </span>
+            <input id="colorblindToggle" class="switch" type="checkbox" role="switch">
+          </label>
+          <label class="toggle-row">
+            <span class="toggle-copy">
+              <strong>Reduce motion</strong>
+              <em>Disable screenshake and pulse effects.</em>
+            </span>
+            <input id="reduceMotionToggle" class="switch" type="checkbox" role="switch">
+          </label>
+        </div>
+
+        <div class="settings-group">
+          <span class="mini-label">Controls</span>
+          <div id="keybindList" class="keybind-list"></div>
+          <div class="settings-actions">
+            <button id="resetBindsBtn" class="btn btn-small" type="button">Reset Defaults</button>
+          </div>
+          <p class="settings-note">Select a binding, then press a key. Esc cancels.</p>
+        </div>
+
+        <div class="button-row">
+          <button id="settingsCloseBtn" class="btn btn-primary" type="button">Back</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
          Game over screen
          ============================================================ -->
     <section id="gameOverScreen" class="screen" hidden>
       <div class="panel gameover-panel">
-        <div class="eyebrow">Run Terminated</div>
+        <div class="eyebrow" id="runModeLabel">Run Terminated</div>
         <h2 class="result-title">Core Breach</h2>
         <div id="newBest" class="new-best" hidden>New High Score</div>
 

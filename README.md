@@ -21,15 +21,30 @@ npx serve .
 | NOVA | `Space` |
 | Pause | `P` or `Esc` |
 | Mute | `M` |
+| Fullscreen | `FULL` button |
+
+Touch devices also get on-screen rotation buttons. Bindings can be remapped from **Settings**, which is available on the start screen and the pause menu.
+
+## Difficulty
+
+- **Normal** — standard protocol, 1 core damage per hit.
+- **Hard** — tougher enemies, faster fire, 2 core damage per hit, and a 1.35x score multiplier.
+
+The choice is saved and applies to the next run.
+
+## Boss waves
+
+Every fifth wave deploys a **Sentinel**: a heavy boss with three phases that escalate from aimed spreads to radial rings and spiral streams. Its health bar and current phase sit under the top HUD. Breaking one repairs a core segment and awards a field record.
 
 ## Features
 
 - Deflect-and-counter combat loop with a shield arc you aim manually
-- Wave-based enemy drones with distinct firing patterns
+- Wave-based enemy drones with distinct firing patterns, plus multi-phase Sentinel bosses
 - Perfect-parry timing, chain multipliers, and a flux meter that powers NOVA
-- Between-wave upgrades and persistent best score / achievements via `localStorage`
-- Procedural audio via the Web Audio API (no sound files)
-- Responsive canvas with DPR scaling and reduced-motion support
+- Between-wave upgrades, difficulty modes, and persistent best score / achievements via `localStorage`
+- Adaptive procedural music layered over synthesized SFX (no audio files)
+- Accessibility: colorblind-safe palette, reduced-motion toggle, remappable controls, and screen-reader announcements
+- Responsive canvas with DPR scaling and touch/pointer aiming
 
 ## Project layout
 

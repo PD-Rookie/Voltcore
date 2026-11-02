@@ -47,11 +47,29 @@
     startScreen: $("startScreen"),
     pauseScreen: $("pauseScreen"),
     upgradeScreen: $("upgradeScreen"),
+    settingsScreen: $("settingsScreen"),
     gameOverScreen: $("gameOverScreen"),
     playBtn: $("playBtn"),
     resumeBtn: $("resumeBtn"),
     pauseRestartBtn: $("pauseRestartBtn"),
     pauseMenuBtn: $("pauseMenuBtn"),
+    settingsBtn: $("settingsBtn"),
+    pauseSettingsBtn: $("pauseSettingsBtn"),
+    settingsCloseBtn: $("settingsCloseBtn"),
+    difficultyGroup: $("difficultyGroup"),
+    colorblindToggle: $("colorblindToggle"),
+    reduceMotionToggle: $("reduceMotionToggle"),
+    keybindList: $("keybindList"),
+    resetBindsBtn: $("resetBindsBtn"),
+    touchTurn: $("touchTurn"),
+    turnLeftBtn: $("turnLeftBtn"),
+    turnRightBtn: $("turnRightBtn"),
+    fullscreenBtn: $("fullscreenBtn"),
+    bossBar: $("bossBar"),
+    bossFill: $("bossFill"),
+    bossPhase: $("bossPhase"),
+    srStatus: $("srStatus"),
+    runModeLabel: $("runModeLabel"),
     upgradeGrid: $("upgradeGrid"),
     againBtn: $("againBtn"),
     shareBtn: $("shareBtn"),
@@ -75,7 +93,9 @@
   const STORAGE = {
     best: "voltcore.best.v1",
     achievements: "voltcore.achievements.v1",
-    muted: "voltcore.muted.v1"
+    muted: "voltcore.muted.v1",
+    difficulty: "voltcore.difficulty.v1",
+    settings: "voltcore.settings.v1"
   };
 
   function readJSON(key, fallback) {
@@ -106,6 +126,100 @@
   let muted = readJSON(STORAGE.muted, false) === true;
 
   /* ============================================================
+     Difficulty, accessibility, and control settings
+     ============================================================ */
+
+  const DIFFICULTIES = {
+    normal: {
+      id: "normal",
+      name: "Normal",
+      detail: "Standard protocol",
+      enemyHp: 0,
+      fireRate: 1,
+      bulletSpeed: 1,
+      coreDamage: 1,
+      scoreMult: 1,
+      spawnScale: 1,
+      bossHp: 1
+    },
+    hard: {
+      id: "hard",
+      name: "Hard",
+      detail: "Overclocked grid",
+      enemyHp: 1,
+      fireRate: 0.86,
+      bulletSpeed: 1.12,
+      coreDamage: 2,
+      scoreMult: 1.35,
+      spawnScale: 1.18,
+      bossHp: 1.4
+    }
+  };
+
+  let difficultyId = readJSON(STORAGE.difficulty, "normal");
+  if (!DIFFICULTIES[difficultyId]) difficultyId = "normal";
+
+  const DEFAULT_BINDS = {
+    left: ["ArrowLeft", "KeyA"],
+    right: ["ArrowRight", "KeyD"],
+    nova: ["Space"],
+    pause: ["KeyP", "Escape"],
+    mute: ["KeyM"]
+  };
+
+  const ACTION_LABELS = {
+    left: "Rotate left",
+    right: "Rotate right",
+    nova: "Nova",
+    pause: "Pause",
+    mute: "Mute"
+  };
+
+  const rawSettings = readJSON(STORAGE.settings, {});
+  const settings = {
+    colorblind: rawSettings.colorblind === true,
+    reduceMotion: rawSettings.reduceMotion === true,
+    binds: {}
+  };
+
+  const binds = {};
+  Object.keys(DEFAULT_BINDS).forEach((action) => {
+    const saved = rawSettings.binds && rawSettings.binds[action];
+    binds[action] = Array.isArray(saved) && saved.length
+      ? saved.slice(0, 2)
+      : DEFAULT_BINDS[action].slice();
+  });
+
+  function saveSettings() {
+    settings.binds = binds;
+    writeJSON(STORAGE.settings, settings);
+  }
+
+  function saveBinds() {
+    saveSettings();
+  }
+
+  function reducedMotion() {
+    return REDUCED_MOTION || settings.reduceMotion;
+  }
+
+  /* Colorblind-safe mapping. Only hostile/hazard colors are remapped so the
+     player's cyan shield and gold parry window keep their meaning. */
+  const COLORBLIND_MAP = {
+    "#ff4fa3": "#e69f00",
+    "#ff9a62": "#f0e442",
+    "#b48cff": "#56b4e9",
+    "#d0b8ff": "#9fe3ff",
+    "#ffd166": "#cc79a7",
+    "#ff4d6d": "#ff8c42"
+  };
+
+  function colorize(hex) {
+    if (!settings.colorblind) return hex;
+    return COLORBLIND_MAP[String(hex).toLowerCase()] || hex;
+  }
+
+  /* ============================================================
      Achievements
      ============================================================ */
 
@@ -115,7 +229,9 @@
     { id: "perfect_wave", name: "Untouched", desc: "Clear a wave without taking core damage." },
     { id: "nova_trio", name: "Critical Mass", desc: "Use NOVA three times in one run." },
     { id: "wave_5", name: "Deep Signal", desc: "Reach wave 5." },
-    { id: "score_10k", name: "High Voltage", desc: "Score 10,000 in one run." }
+    { id: "score_10k", name: "High Voltage", desc: "Score 10,000 in one run." },
+    { id: "sentinel_down", name: "Sentinel Down", desc: "Break a Sentinel boss." },
+    { id: "hard_5", name: "Overclocked", desc: "Reach wave 5 on Hard." }
   ];
 
   /* ============================================================
@@ -128,6 +244,9 @@
     master: null,
     noiseBuffer: null,
     ambience: null,
+    music: null,
+    musicTimer: null,
+    musicTarget: 0,
     muted: muted,
 
     init() {
@@ -249,6 +368,15 @@
           this.tone(330, 330, 0.1, "sine", 0.04);
           this.tone(440, 440, 0.12, "sine", 0.035, 0.08);
           break;
+        case "boss":
+          this.tone(60, 120, 0.8, "sawtooth", 0.1);
+          this.tone(180, 90, 0.9, "square", 0.045, 0.1);
+          this.noise(0.8, 0.06, 500);
+          break;
+        case "phase":
+          this.tone(200, 640, 0.4, "sawtooth", 0.06);
+          this.tone(640, 320, 0.5, "triangle", 0.05, 0.1);
+          break;
         case "upgrade":
           this.tone(523, 523, 0.1, "sine", 0.045);
           this.tone(659, 659, 0.1, "sine", 0.045, 0.08);
@@ -276,6 +404,142 @@
           break;
         default:
           break;
+      }
+    },
+
+    musicTone(freq, endFreq, duration, type, volume, delay, music) {
+      if (!this.ctx || !music) return;
+      const start = this.ctx.currentTime + Math.max(0, delay || 0);
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = type || "sine";
+      osc.frequency.setValueAtTime(Math.max(20, freq), start);
+      if (endFreq) {
+        osc.frequency.exponentialRampToValueAtTime(Math.max(20, endFreq), start + duration);
+      }
+
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0001, volume), start + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+      osc.connect(gain);
+      gain.connect(music.gain);
+      osc.start(start);
+      osc.stop(start + duration + 0.03);
+    },
+
+    musicNoise(duration, volume, cutoff, delay, music) {
+      if (!this.ctx || !music || !this.noiseBuffer) return;
+      const start = this.ctx.currentTime + Math.max(0, delay || 0);
+      const source = this.ctx.createBufferSource();
+      const filter = this.ctx.createBiquadFilter();
+      const gain = this.ctx.createGain();
+
+      source.buffer = this.noiseBuffer;
+      filter.type = "highpass";
+      filter.frequency.value = cutoff || 4000;
+      gain.gain.setValueAtTime(Math.max(0.0001, volume), start);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+
+      source.connect(filter);
+      filter.connect(gain);
+      gain.connect(music.gain);
+      source.start(start);
+      source.stop(start + duration + 0.02);
+    },
+
+    startMusic() {
+      if (!this.ctx || !this.master || this.music) return;
+      const now = this.ctx.currentTime;
+      const gain = this.ctx.createGain();
+      gain.gain.setValueAtTime(0.0001, now);
+      gain.gain.linearRampToValueAtTime(0.5, now + 1.4);
+      gain.connect(this.master);
+
+      this.musicTarget = 0;
+      this.music = {
+        gain,
+        step: 0,
+        next: now + 0.14,
+        stepDur: 0.155,
+        intensity: 0
+      };
+      this.musicTimer = window.setInterval(() => this.scheduleMusic(), 55);
+    },
+
+    stopMusic() {
+      if (this.musicTimer) {
+        window.clearInterval(this.musicTimer);
+        this.musicTimer = null;
+      }
+      if (!this.ctx || !this.music) return;
+
+      const music = this.music;
+      this.music = null;
+      this.musicTarget = 0;
+
+      const now = this.ctx.currentTime;
+      music.gain.gain.cancelScheduledValues(now);
+      music.gain.gain.setTargetAtTime(0.0001, now, 0.12);
+
+      window.setTimeout(() => {
+        try {
+          music.gain.disconnect();
+        } catch (error) {
+          /* Already disconnected. */
+        }
+      }, 700);
+    },
+
+    setMusicIntensity(value) {
+      this.musicTarget = clamp(value, 0, 1);
+    },
+
+    scheduleMusic() {
+      const music = this.music;
+      if (!this.ctx || !music || this.muted) return;
+
+      const now = this.ctx.currentTime;
+      music.intensity += (this.musicTarget - music.intensity) * 0.06;
+
+      while (music.next < now + 0.22) {
+        this.playMusicStep(music, music.next - now);
+        music.next += music.stepDur;
+        music.step = (music.step + 1) % 16;
+      }
+    },
+
+    playMusicStep(music, delay) {
+      const step = music.step;
+      const level = music.intensity;
+      const bassLine = [55, 55, 65.41, 55, 82.41, 55, 65.41, 49];
+
+      if (step % 4 === 0) {
+        this.musicTone(130, 44, 0.2, "sine", 0.09 + level * 0.07, delay, music);
+      }
+
+      if (step % 2 === 0) {
+        const bass = bassLine[(step / 2) % bassLine.length];
+        this.musicTone(bass, null, 0.16, "triangle", 0.035 + level * 0.025, delay, music);
+      }
+
+      if (step % 4 === 2) {
+        this.musicNoise(0.08, 0.006 + level * 0.012, 5200, delay, music);
+      } else if (step % 2 === 1 && level > 0.25) {
+        this.musicNoise(0.035, 0.004 + level * 0.008, 7000, delay, music);
+      }
+
+      if (level > 0.32 && step % 2 === 0) {
+        const arp = [220, 261.63, 329.63, 392, 329.63, 261.63][(step / 2) % 6];
+        this.musicTone(arp, null, 0.11, "square", 0.01 + level * 0.018, delay, music);
+        if (level > 0.6) {
+          this.musicTone(arp * 2, null, 0.09, "sine", 0.006 + level * 0.008, delay + 0.08, music);
+        }
+      }
+
+      if (level > 0.75 && step % 4 === 3) {
+        this.musicTone(880, 1174.66, 0.1, "sine", 0.012 + level * 0.01, delay, music);
       }
     },
 
@@ -486,6 +750,17 @@
       color: "#ffd166",
       spin: 0.55,
       score: 260
+    },
+    sentinel: {
+      hp: 24,
+      radius: 44,
+      orbit: 254,
+      orbitSpeed: 0.05,
+      fireRate: 1.6,
+      bulletSpeed: 160,
+      color: "#ff4fa3",
+      spin: 0.4,
+      score: 1500
     }
   };
 
@@ -591,7 +866,16 @@
   let menuTime = 0;
   let aimHintTimer = 0;
   let flashTimer = 0;
+  let settingsReturn = "menu";
+  let rebindAction = null;
   const keys = new Set();
+  const COARSE_POINTER = window.matchMedia
+    ? window.matchMedia("(pointer: coarse)").matches
+    : false;
+
+  function currentDiff() {
+    return (game && DIFFICULTIES[game.difficulty]) || DIFFICULTIES.normal;
+  }
 
   function makeGame() {
     return {
@@ -599,6 +883,8 @@
       wave: 1,
       health: 5,
       maxHealth: 5,
+      difficulty: difficultyId,
+      bossesDefeated: 0,
 
       combo: 0,
       comboTimer: 0,
@@ -694,6 +980,10 @@
       pips[i].classList.toggle("on", i < game.health);
     }
     ui.healthPips.classList.toggle("low", game.health <= 2);
+    ui.healthPips.setAttribute(
+      "aria-label",
+      "Core integrity " + game.health + " of " + game.maxHealth
+    );
 
     let progress = 0;
     if (!game.waveActive) {
@@ -709,6 +999,14 @@
     if (comboOn) {
       setText(ui.comboValue, game.combo);
       setText(ui.comboMult, "x" + multiplier.toFixed(1));
+    }
+
+    const boss = game.enemies.find((enemy) => enemy.isBoss);
+    ui.bossBar.hidden = !boss;
+    if (boss) {
+      const bossRatio = clamp(boss.hp / boss.maxHp, 0, 1);
+      ui.bossFill.style.transform = "scaleX(" + bossRatio.toFixed(3) + ")";
+      setText(ui.bossPhase, "PHASE " + (boss.bossPhase || 1));
     }
 
     ui.novaBtn.style.setProperty("--p", clamp(game.flux, 0, 100).toFixed(1) + "%");
@@ -728,6 +1026,193 @@
     ui.muteBtn.textContent = muted ? "SND OFF" : "SND ON";
     ui.muteBtn.classList.toggle("off", muted);
     ui.muteBtn.setAttribute("aria-pressed", String(muted));
+  }
+
+  /* ============================================================
+     Settings, difficulty, and keybind UI
+     ============================================================ */
+
+  function announce(text) {
+    if (!ui.srStatus) return;
+    ui.srStatus.textContent = "";
+    window.setTimeout(() => {
+      ui.srStatus.textContent = text;
+    }, 30);
+  }
+
+  const KEY_NAMES = {
+    ArrowLeft: "←",
+    ArrowRight: "→",
+    ArrowUp: "↑",
+    ArrowDown: "↓",
+    Space: "Space",
+    Escape: "Esc",
+    ShiftLeft: "L Shift",
+    ShiftRight: "R Shift",
+    ControlLeft: "L Ctrl",
+    ControlRight: "R Ctrl",
+    AltLeft: "L Alt",
+    AltRight: "R Alt",
+    Tab: "Tab",
+    Enter: "Enter",
+    Backspace: "Backspace",
+    Semicolon: ";",
+    Quote: "'",
+    Comma: ",",
+    Period: ".",
+    Slash: "/",
+    Backslash: "\\",
+    BracketLeft: "[",
+    BracketRight: "]",
+    Minus: "-",
+    Equal: "=",
+    Backquote: "`"
+  };
+
+  function keyLabel(code) {
+    if (KEY_NAMES[code]) return KEY_NAMES[code];
+    if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+    if (/^Digit\d$/.test(code)) return code.slice(5);
+    if (/^Numpad\d$/.test(code)) return "Num " + code.slice(6);
+    return code;
+  }
+
+  function actionFor(code) {
+    const actions = Object.keys(binds);
+    for (const action of actions) {
+      if (binds[action].indexOf(code) !== -1) return action;
+    }
+    return null;
+  }
+
+  function syncDifficultyUI() {
+    if (!ui.difficultyGroup) return;
+    const buttons = ui.difficultyGroup.querySelectorAll("[data-difficulty]");
+    for (const button of buttons) {
+      const active = button.getAttribute("data-difficulty") === difficultyId;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    }
+  }
+
+  function renderKeybinds() {
+    if (!ui.keybindList) return;
+    ui.keybindList.innerHTML = "";
+
+    Object.keys(ACTION_LABELS).forEach((action) => {
+      const row = document.createElement("div");
+      row.className = "keybind-row";
+
+      const name = document.createElement("span");
+      name.className = "keybind-name";
+      name.textContent = ACTION_LABELS[action];
+
+      const chips = document.createElement("span");
+      chips.className = "key-chips";
+
+      binds[action].forEach((code, index) => {
+        const listening =
+          rebindAction && rebindAction.action === action && rebindAction.index === index;
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "key-chip" + (listening ? " listening" : "");
+        chip.textContent = listening ? "PRESS..." : keyLabel(code);
+        chip.setAttribute(
+          "aria-label",
+          "Rebind " + ACTION_LABELS[action] + ", currently " + keyLabel(code)
+        );
+        chip.addEventListener("click", () => {
+          rebindAction = { action, index };
+          renderKeybinds();
+        });
+        chips.appendChild(chip);
+      });
+
+      if (binds[action].length < 2) {
+        const add = document.createElement("button");
+        add.type = "button";
+        add.className = "key-chip add";
+        add.textContent = "+";
+        add.setAttribute("aria-label", "Add alternate binding for " + ACTION_LABELS[action]);
+        add.addEventListener("click", () => {
+          rebindAction = { action, index: -1 };
+          renderKeybinds();
+        });
+        chips.appendChild(add);
+      }
+
+      row.append(name, chips);
+      ui.keybindList.appendChild(row);
+    });
+  }
+
+  function syncSettingsUI() {
+    if (ui.colorblindToggle) ui.colorblindToggle.checked = settings.colorblind;
+    if (ui.reduceMotionToggle) ui.reduceMotionToggle.checked = settings.reduceMotion;
+    syncDifficultyUI();
+    renderKeybinds();
+  }
+
+  function selectDifficulty(id) {
+    if (!DIFFICULTIES[id]) return;
+    difficultyId = id;
+    writeJSON(STORAGE.difficulty, id);
+    syncDifficultyUI();
+    Sound.init();
+    Sound.play("click");
+    announce("Difficulty set to " + DIFFICULTIES[id].name);
+  }
+
+  function refreshEnemyColors() {
+    for (const enemy of game.enemies) {
+      const def = ENEMY_DEFS[enemy.type];
+      if (def) enemy.color = colorize(def.color);
+    }
+  }
+
+  function setColorblind(value) {
+    settings.colorblind = value === true;
+    saveSettings();
+    refreshEnemyColors();
+    syncSettingsUI();
+    announce(settings.colorblind ? "Colorblind palette enabled" : "Default palette enabled");
+  }
+
+  function setReduceMotion(value) {
+    settings.reduceMotion = value === true;
+    saveSettings();
+    syncSettingsUI();
+    announce(settings.reduceMotion ? "Reduced motion enabled" : "Full motion enabled");
+  }
+
+  function openSettings() {
+    settingsReturn = state === "paused" ? "paused" : "menu";
+    rebindAction = null;
+    syncSettingsUI();
+    setState("settings");
+    Sound.play("click");
+  }
+
+  function closeSettings() {
+    rebindAction = null;
+    if (settingsReturn === "paused") {
+      setState("paused");
+    } else {
+      setState("menu");
+      updateBestUI();
+      renderAchievements();
+    }
+    Sound.play("click");
+  }
+
+  function resetBinds() {
+    Object.keys(DEFAULT_BINDS).forEach((action) => {
+      binds[action] = DEFAULT_BINDS[action].slice();
+    });
+    rebindAction = null;
+    saveBinds();
+    renderKeybinds();
+    announce("Control bindings reset");
   }
 
   function renderAchievements() {
@@ -832,10 +1317,12 @@
     ui.startScreen.hidden = next !== "menu";
     ui.pauseScreen.hidden = next !== "paused";
     ui.upgradeScreen.hidden = next !== "upgrade";
+    ui.settingsScreen.hidden = next !== "settings";
     ui.gameOverScreen.hidden = next !== "gameover";
 
-    ui.hud.hidden = next === "menu";
+    ui.hud.hidden = next === "menu" || next === "settings";
     ui.novaBtn.hidden = next !== "playing";
+    ui.touchTurn.hidden = !(next === "playing" && COARSE_POINTER);
     ui.pauseBtn.hidden = !(next === "playing" || next === "paused");
 
     if (next !== "playing") {
@@ -861,14 +1348,19 @@
     Sound.resume();
     Sound.play("start");
     Sound.startAmbience();
+    Sound.startMusic();
 
     game = makeGame();
+    game.difficulty = difficultyId;
     ui.toastStack.innerHTML = "";
     buildHealthPips();
     setState("playing");
     beginWave(1);
     syncHud();
     showAimHint();
+    announce(
+      "Run started on " + DIFFICULTIES[difficultyId].name + ". Wave 1 incoming."
+    );
     lastTime = performance.now();
   }
 
@@ -890,6 +1382,7 @@
     keys.clear();
     hideAimHint();
     Sound.stopAmbience();
+    Sound.stopMusic();
     game = makeGame();
     ui.toastStack.innerHTML = "";
     setState("menu");
@@ -905,6 +1398,7 @@
     hideAimHint();
     setState("gameover");
     Sound.stopAmbience();
+    Sound.stopMusic();
     Sound.play("gameover");
 
     const newBest = game.score > best.score;
@@ -924,6 +1418,11 @@
     ui.gameOverAch.textContent = game.runAchievements.length
       ? "NEW FIELD RECORDS // " + game.runAchievements.join(" · ")
       : "NO NEW RECORDS // BREAK DEEPER NEXT RUN";
+
+    setText(ui.runModeLabel, "RUN TERMINATED // " + currentDiff().name.toUpperCase());
+    announce(
+      "Game over. Score " + formatScore(game.score) + ". Wave " + game.wave + "."
+    );
 
     syncHud();
   }
@@ -1030,23 +1529,44 @@
      Wave spawning and enemy behavior
      ============================================================ */
 
+  function isBossWave(waveNumber) {
+    return waveNumber >= 5 && waveNumber % 5 === 0;
+  }
+
   function beginWave(waveNumber) {
+    const diff = currentDiff();
     game.wave = waveNumber;
     game.waveActive = true;
     game.pendingUpgrade = false;
-    game.spawnRemaining = 3 + Math.floor(waveNumber * 1.7);
-    game.waveTotal = game.spawnRemaining;
-    game.spawnInterval = Math.max(0.52, 1.55 - waveNumber * 0.055);
-    game.spawnTimer = 0.8;
     game.damageThisWave = false;
     game.upgradeDelay = 0;
     game.enemies.length = 0;
     game.bullets.length = 0;
 
-    if (waveNumber >= 5) unlockAchievement("wave_5");
+    const bossWave = isBossWave(waveNumber);
+    if (bossWave) {
+      game.spawnRemaining = 2 + Math.floor(waveNumber / 5);
+      game.spawnInterval = Math.max(0.9, (1.55 - waveNumber * 0.04) * 1.1);
+    } else {
+      game.spawnRemaining = 3 + Math.floor(waveNumber * 1.7);
+      game.spawnInterval = Math.max(0.45, (1.55 - waveNumber * 0.055) / diff.spawnScale);
+    }
+    game.waveTotal = game.spawnRemaining + (bossWave ? 1 : 0);
+    game.spawnTimer = 0.8;
 
-    showToast("WAVE " + waveNumber + " // " + game.waveTotal + " SIGNALS", "wave", 2200);
-    Sound.play("wave");
+    if (waveNumber >= 5) unlockAchievement("wave_5");
+    if (waveNumber >= 5 && game.difficulty === "hard") unlockAchievement("hard_5");
+
+    if (bossWave) {
+      spawnBoss();
+      showToast("SENTINEL INBOUND // WAVE " + waveNumber, "boss", 3000);
+      Sound.play("boss");
+      announce("Sentinel boss incoming on wave " + waveNumber + ".");
+    } else {
+      showToast("WAVE " + waveNumber + " // " + game.waveTotal + " SIGNALS", "wave", 2200);
+      Sound.play("wave");
+      announce("Wave " + waveNumber + ". " + game.waveTotal + " hostiles incoming.");
+    }
     syncHud();
   }
 
@@ -1072,15 +1592,16 @@
   function spawnEnemy() {
     const type = pickEnemyType(game.wave);
     const def = ENEMY_DEFS[type];
+    const diff = currentDiff();
     const orbitAngle = rand(0, TAU);
     const orbitRadius = def.orbit + rand(-14, 14);
     const hpBonus = Math.floor((game.wave - 1) / 4);
-    const maxHp = def.hp + hpBonus;
+    const maxHp = def.hp + hpBonus + diff.enemyHp;
 
     const enemy = {
       id: ++game.nextEnemyId,
       type,
-      color: def.color,
+      color: colorize(def.color),
       radius: def.radius,
       hp: maxHp,
       maxHp,
@@ -1090,9 +1611,9 @@
       orbitSpeed: (Math.random() < 0.5 ? -1 : 1) * def.orbitSpeed * rand(0.8, 1.2),
       x: Math.cos(orbitAngle) * orbitRadius,
       y: Math.sin(orbitAngle) * orbitRadius,
-      fireRate: def.fireRate * Math.max(0.66, 1 - game.wave * 0.022),
+      fireRate: def.fireRate * Math.max(0.66, 1 - game.wave * 0.022) * diff.fireRate,
       fireTimer: rand(1.15, 2.3),
-      bulletSpeed: def.bulletSpeed * (1 + Math.min(0.28, game.wave * 0.012)),
+      bulletSpeed: def.bulletSpeed * (1 + Math.min(0.28, game.wave * 0.012)) * diff.bulletSpeed,
       spawnT: 0,
       rotation: rand(0, TAU),
       spin: def.spin * rand(0.75, 1.25),
@@ -1106,8 +1627,58 @@
     addRing(enemy.x, enemy.y, enemy.color, enemy.radius * 2.8, 1.5, 0.42);
   }
 
+  function spawnBoss() {
+    const def = ENEMY_DEFS.sentinel;
+    const diff = currentDiff();
+    const tier = Math.floor(game.wave / 5);
+    const maxHp = Math.round((def.hp + (tier - 1) * 16) * diff.bossHp);
+    const orbitAngle = rand(0, TAU);
+    const orbitRadius = def.orbit + rand(-10, 10);
+
+    const boss = {
+      id: ++game.nextEnemyId,
+      type: "sentinel",
+      isBoss: true,
+      color: colorize(def.color),
+      radius: def.radius,
+      hp: maxHp,
+      maxHp,
+      angle: orbitAngle,
+      baseOrbit: orbitRadius,
+      orbit: orbitRadius,
+      orbitSpeed: (Math.random() < 0.5 ? -1 : 1) * def.orbitSpeed,
+      x: Math.cos(orbitAngle) * orbitRadius,
+      y: Math.sin(orbitAngle) * orbitRadius,
+      fireRate: def.fireRate * diff.fireRate,
+      fireTimer: 2.4,
+      bulletSpeed: def.bulletSpeed * diff.bulletSpeed * (1 + Math.min(0.2, game.wave * 0.01)),
+      spawnT: 0,
+      rotation: rand(0, TAU),
+      spin: def.spin,
+      phase: rand(0, TAU),
+      bobSpeed: 0.5,
+      bobAmp: 6,
+      hitFlash: 0,
+      bossPhase: 1,
+      patternStep: 0,
+      spiral: rand(0, TAU)
+    };
+
+    game.enemies.push(boss);
+    addRing(boss.x, boss.y, boss.color, boss.radius * 3.4, 5, 0.8);
+    addRing(boss.x, boss.y, "#ffd166", boss.radius * 2.2, 3, 0.6);
+    burst(boss.x, boss.y, boss.color, 30, 220, 3.2);
+    game.shake = Math.max(game.shake, 12);
+    flashScreen("nova");
+  }
+
   function enemyFire(enemy) {
     if (state !== "playing") return;
+
+    if (enemy.isBoss) {
+      bossFire(enemy);
+      return;
+    }
 
     const aim = Math.atan2(-enemy.y, -enemy.x);
 
@@ -1134,6 +1705,91 @@
     burst(enemy.x, enemy.y, enemy.color, 4, 60, 2);
   }
 
+  function ringShot(enemy, count, speed, radius, kind) {
+    const offset = rand(0, TAU);
+    for (let i = 0; i < count; i++) {
+      spawnEnemyBullet(
+        enemy.x,
+        enemy.y,
+        offset + (i / count) * TAU,
+        speed,
+        radius,
+        kind
+      );
+    }
+  }
+
+  function bossFire(enemy) {
+    if (state !== "playing") return;
+
+    if (game.bullets.length > 260) {
+      enemy.fireTimer = 0.9;
+      return;
+    }
+
+    const diff = currentDiff();
+    const ratio = enemy.maxHp ? enemy.hp / enemy.maxHp : 1;
+    const phase = ratio > 0.66 ? 1 : ratio > 0.33 ? 2 : 3;
+
+    if (phase !== enemy.bossPhase) {
+      enemy.bossPhase = phase;
+      addText(
+        "PHASE " + phase,
+        enemy.x,
+        enemy.y - enemy.radius - 20,
+        phase === 3 ? "#ff4d6d" : "#ffd166",
+        22
+      );
+      addRing(enemy.x, enemy.y, "#ffd166", enemy.radius * 3.2, 4, 0.6);
+      burst(enemy.x, enemy.y, phase === 3 ? "#ff4d6d" : "#ffd166", 22, 200, 3);
+      game.shake = Math.max(game.shake, 10);
+      Sound.play("phase");
+      announce("Sentinel phase " + phase + ".");
+    }
+
+    const aim = Math.atan2(-enemy.y, -enemy.x);
+    const speed = enemy.bulletSpeed;
+    enemy.patternStep = (enemy.patternStep || 0) + 1;
+
+    if (phase === 1) {
+      for (let offset = -1; offset <= 1; offset++) {
+        spawnEnemyBullet(enemy.x, enemy.y, aim + offset * 0.16, speed, 7, "normal");
+      }
+      if (enemy.patternStep % 3 === 0) {
+        ringShot(enemy, 10, speed * 0.78, 6, "normal");
+      }
+    } else if (phase === 2) {
+      for (let offset = -2; offset <= 2; offset++) {
+        spawnEnemyBullet(enemy.x, enemy.y, aim + offset * 0.14, speed * 1.05, 6.5, "fast");
+      }
+      if (enemy.patternStep % 2 === 0) {
+        ringShot(enemy, 12, speed * 0.7, 6, "normal");
+      }
+    } else {
+      for (let offset = -2; offset <= 2; offset++) {
+        spawnEnemyBullet(enemy.x, enemy.y, aim + offset * 0.12, speed * 1.15, 6, "fast");
+      }
+      enemy.spiral += 0.42;
+      for (let i = 0; i < 3; i++) {
+        spawnEnemyBullet(
+          enemy.x,
+          enemy.y,
+          enemy.spiral + (i / 3) * TAU,
+          speed * 0.62,
+          5.5,
+          "split"
+        );
+      }
+      if (enemy.patternStep % 2 === 0) {
+        ringShot(enemy, 14, speed * 0.66, 5.5, "shard");
+      }
+    }
+
+    const rates = [1.6, 1.25, 1.0];
+    enemy.fireTimer = rates[phase - 1] * diff.fireRate * rand(0.88, 1.12);
+    burst(enemy.x, enemy.y, enemy.color, 6, 80, 2.2);
+  }
+
   function spawnEnemyBullet(x, y, angle, speed, radius, kind) {
     const color = kind === "split"
       ? "#b48cff"
@@ -1151,7 +1807,7 @@
       vx: Math.cos(angle) * speed,
       vy: Math.sin(angle) * speed,
       r: radius,
-      color,
+      color: colorize(color),
       owner: "enemy",
       kind,
       splitAt: kind === "split" ? 185 : 0,
@@ -1178,8 +1834,8 @@
       );
     }
 
-    addRing(bullet.x, bullet.y, "#b48cff", 58, 2, 0.35);
-    burst(bullet.x, bullet.y, "#b48cff", 13, 130, 2.5);
+    addRing(bullet.x, bullet.y, colorize("#b48cff"), 58, 2, 0.35);
+    burst(bullet.x, bullet.y, colorize("#b48cff"), 13, 130, 2.5);
   }
 
   /* ============================================================
@@ -1199,8 +1855,8 @@
     game.novaFlash = Math.max(0, game.novaFlash - dt * 2.2);
 
     let turn = 0;
-    if (keys.has("ArrowLeft") || keys.has("KeyA")) turn -= 1;
-    if (keys.has("ArrowRight") || keys.has("KeyD")) turn += 1;
+    if (keys.has("left")) turn -= 1;
+    if (keys.has("right")) turn += 1;
     if (turn) game.aimAngle += turn * 3.2 * dt;
 
     const aimDelta = angleDiff(game.aimAngle, game.shieldAngle);
@@ -1442,19 +2098,40 @@
 
     enemy.hp -= amount;
     enemy.hitFlash = 1;
-    burst(enemy.x, enemy.y, enemy.color, 7, 120, 2.4);
+    burst(enemy.x, enemy.y, enemy.color, enemy.isBoss ? 12 : 7, 120, 2.4);
 
     if (enemy.hp > 0) {
-      game.shake = Math.max(game.shake, 3);
+      game.shake = Math.max(game.shake, enemy.isBoss ? 5 : 3);
       Sound.play("hit");
       return;
     }
 
     const def = ENEMY_DEFS[enemy.type];
+    const isBoss = enemy.isBoss === true;
     game.enemies.splice(index, 1);
     game.totalKills++;
-
     addCombo(1);
+
+    if (isBoss) {
+      game.bossesDefeated++;
+      const bonus = addScore(def.score + game.wave * 80);
+      addFlux(45 * game.fluxGain);
+      game.health = Math.min(game.maxHealth, game.health + 1);
+      buildHealthPips();
+      addText("SENTINEL DOWN +" + bonus, enemy.x, enemy.y, "#ffd166", 26);
+      addRing(enemy.x, enemy.y, "#ffd166", enemy.radius * 8, 8, 0.95);
+      addRing(enemy.x, enemy.y, enemy.color, enemy.radius * 5, 5, 0.8);
+      burst(enemy.x, enemy.y, "#ffd166", 60, 420, 5);
+      burst(enemy.x, enemy.y, enemy.color, 48, 300, 4.5);
+      game.shake = Math.max(game.shake, 26);
+      game.novaFlash = Math.max(game.novaFlash, 0.8);
+      flashScreen("nova");
+      unlockAchievement("sentinel_down");
+      announce("Sentinel destroyed. Core repaired by one.");
+      Sound.play("nova");
+      return;
+    }
+
     const points = addScore(def.score);
     addFlux(9 * game.fluxGain);
     addText("+" + points, enemy.x, enemy.y, enemy.color, 18);
@@ -1467,8 +2144,9 @@
     if (game.totalKills === 1) unlockAchievement("first_blood");
   }
 
-  function damageCore() {
-    game.health = Math.max(0, game.health - 1);
+  function damageCore(amount) {
+    const damage = amount || currentDiff().coreDamage;
+    game.health = Math.max(0, game.health - damage);
     game.damageThisWave = true;
     game.combo = 0;
     game.comboTimer = 0;
@@ -1479,6 +2157,7 @@
     addRing(0, 0, "#ff4d6d", 110, 5, 0.65);
     burst(0, 0, "#ff4d6d", 34, 260, 4.5);
     Sound.play("damage");
+    announce("Core hit. " + game.health + " of " + game.maxHealth + " integrity remaining.");
 
     syncHud();
 
@@ -1534,7 +2213,7 @@
   }
 
   function addScore(amount) {
-    const points = Math.round(amount * getMultiplier());
+    const points = Math.round(amount * getMultiplier() * currentDiff().scoreMult);
     game.score += points;
     if (game.score >= 10000) unlockAchievement("score_10k");
     return points;
@@ -1554,6 +2233,7 @@
 
     showToast("WAVE CLEAR // +" + bonus + " PTS", "wave", 2200);
     Sound.play("wave");
+    announce("Wave " + game.wave + " cleared. Choose an upgrade.");
     syncHud();
   }
 
@@ -1657,16 +2337,16 @@
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     ctx.clearRect(0, 0, W, H);
 
-    const time = state === "menu" ? menuTime : game.time;
+    const time = state === "menu" || state === "settings" ? menuTime : game.time;
     drawBackdrop(time);
 
     ctx.save();
 
-    if (state === "menu") {
+    if (state === "menu" || state === "settings") {
       drawMenuScene(time);
     } else {
-      const shakeX = REDUCED_MOTION ? 0 : (Math.random() - 0.5) * game.shake;
-      const shakeY = REDUCED_MOTION ? 0 : (Math.random() - 0.5) * game.shake;
+      const shakeX = reducedMotion() ? 0 : (Math.random() - 0.5) * game.shake;
+      const shakeY = reducedMotion() ? 0 : (Math.random() - 0.5) * game.shake;
       ctx.translate(cx + shakeX, cy + shakeY);
       ctx.scale(viewScale, viewScale);
 
@@ -2029,6 +2709,37 @@
         ctx.beginPath();
         ctx.arc(0, 0, r * 0.16, 0, TAU);
         ctx.fill();
+      } else if (enemy.type === "sentinel") {
+        ctx.beginPath();
+        for (let i = 0; i < 12; i++) {
+          const angle = (i / 12) * TAU;
+          const radius = i % 2 === 0 ? r : r * 0.9;
+          const px = Math.cos(angle) * radius;
+          const py = Math.sin(angle) * radius;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.globalAlpha = 0.75;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const angle = (i / 6) * TAU;
+          const px = Math.cos(angle) * r * 0.62;
+          const py = Math.sin(angle) * r * 0.62;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.stroke();
+
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = enemy.bossPhase >= 3 ? "#ff4d6d" : enemy.color;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.2 + Math.sin(time * 4) * 1.5, 0, TAU);
+        ctx.fill();
       } else {
         ctx.beginPath();
         for (let i = 0; i < 8; i++) {
@@ -2050,7 +2761,7 @@
 
       ctx.restore();
 
-      if (enemy.hp < enemy.maxHp) {
+      if (enemy.hp < enemy.maxHp && !enemy.isBoss) {
         const width = r * 1.8;
         const ratio = clamp(enemy.hp / enemy.maxHp, 0, 1);
         const y = enemy.y - r - 12;
@@ -2067,6 +2778,22 @@
         ctx.beginPath();
         ctx.arc(enemy.x, enemy.y, r + 10 + Math.sin(time * 2 + enemy.phase) * 3, 0, TAU);
         ctx.stroke();
+      } else if (enemy.isBoss) {
+        const phaseColor = enemy.bossPhase >= 3 ? "#ff4d6d" : enemy.bossPhase === 2 ? "#ffd166" : enemy.color;
+        ctx.save();
+        ctx.strokeStyle = phaseColor;
+        ctx.globalAlpha = 0.28 + 0.12 * Math.sin(time * 2.4 + enemy.phase);
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([6, 12]);
+        ctx.beginPath();
+        ctx.arc(enemy.x, enemy.y, r + 18 + Math.sin(time * 1.8) * 4, 0, TAU);
+        ctx.stroke();
+        ctx.globalAlpha = 0.16;
+        ctx.setLineDash([2, 16]);
+        ctx.beginPath();
+        ctx.arc(enemy.x, enemy.y, r + 34, 0, TAU);
+        ctx.stroke();
+        ctx.restore();
       }
     }
   }
@@ -2227,6 +2954,7 @@
 
   function updateAimFromEvent(event) {
     if (state !== "playing") return;
+    if (event.target && event.target.closest && event.target.closest("button")) return;
 
     const rect = ui.canvas.getBoundingClientRect();
     const x = event.clientX - rect.left - rect.width / 2;
@@ -2236,6 +2964,81 @@
 
     game.aimAngle = Math.atan2(y, x);
     hideAimHint();
+  }
+
+  function assignBinding(code) {
+    const target = rebindAction;
+    if (!target) return;
+
+    Object.keys(binds).forEach((action) => {
+      if (action === target.action) return;
+      binds[action] = binds[action].filter((item) => item !== code);
+      if (!binds[action].length) binds[action] = DEFAULT_BINDS[action].slice();
+    });
+
+    const list = binds[target.action];
+    if (target.index === -1) {
+      if (list.length >= 2) list.shift();
+      list.push(code);
+    } else {
+      list[target.index] = code;
+    }
+
+    const unique = [];
+    list.forEach((item) => {
+      if (unique.indexOf(item) === -1) unique.push(item);
+    });
+    binds[target.action] = unique.length ? unique : DEFAULT_BINDS[target.action].slice();
+
+    rebindAction = null;
+    saveBinds();
+    renderKeybinds();
+    Sound.play("click");
+    announce(ACTION_LABELS[target.action] + " bound to " + keyLabel(code));
+  }
+
+  function toggleFullscreen() {
+    const root = document.documentElement;
+    const request = root.requestFullscreen || root.webkitRequestFullscreen;
+    const exit = document.exitFullscreen || document.webkitExitFullscreen;
+
+    try {
+      if (!document.fullscreenElement && request) {
+        const result = request.call(root);
+        if (result && result.catch) result.catch(() => {});
+      } else if (exit) {
+        const result = exit.call(document);
+        if (result && result.catch) result.catch(() => {});
+      }
+    } catch (error) {
+      /* Fullscreen unsupported. */
+    }
+
+    Sound.init();
+    Sound.play("click");
+  }
+
+  function bindHold(button, action) {
+    if (!button) return;
+
+    const press = (event) => {
+      event.preventDefault();
+      Sound.init();
+      Sound.resume();
+      keys.add(action);
+      button.classList.add("active");
+    };
+
+    const release = () => {
+      keys.delete(action);
+      button.classList.remove("active");
+    };
+
+    button.addEventListener("pointerdown", press);
+    button.addEventListener("pointerup", release);
+    button.addEventListener("pointerleave", release);
+    button.addEventListener("pointercancel", release);
+    button.addEventListener("contextmenu", (event) => event.preventDefault());
   }
 
   function bindInput() {
@@ -2258,11 +3061,24 @@
     window.addEventListener("keydown", (event) => {
       const code = event.code;
 
-      if (event.repeat && (code === "Space" || code === "KeyP" || code === "Escape" || code === "KeyM")) {
+      if (rebindAction) {
+        event.preventDefault();
+        if (code === "Escape") {
+          rebindAction = null;
+          renderKeybinds();
+          return;
+        }
+        assignBinding(code);
         return;
       }
 
-      if (code === "Space") {
+      const action = actionFor(code);
+
+      if (event.repeat && (action === "nova" || action === "pause" || action === "mute")) {
+        return;
+      }
+
+      if (action === "nova") {
         if (state === "playing") {
           event.preventDefault();
           activateNova();
@@ -2270,37 +3086,35 @@
         return;
       }
 
-      if (code === "KeyP" || code === "Escape") {
+      if (action === "pause") {
         if (state === "playing") {
           event.preventDefault();
           pauseGame();
         } else if (state === "paused") {
           event.preventDefault();
           resumeGame();
+        } else if (state === "settings" && code === "Escape") {
+          event.preventDefault();
+          closeSettings();
         }
         return;
       }
 
-      if (code === "KeyM") {
+      if (action === "mute") {
         event.preventDefault();
         toggleMute();
         return;
       }
 
-      if (state === "playing") {
-        if (
-          code === "ArrowLeft" ||
-          code === "ArrowRight" ||
-          code === "KeyA" ||
-          code === "KeyD"
-        ) {
-          event.preventDefault();
-          keys.add(code);
-        }
+      if (state === "playing" && (action === "left" || action === "right")) {
+        event.preventDefault();
+        keys.add(action);
       }
     });
 
     window.addEventListener("keyup", (event) => {
+      const action = actionFor(event.code);
+      if (action) keys.delete(action);
       keys.delete(event.code);
     });
 
@@ -2313,6 +3127,50 @@
     });
 
     window.addEventListener("resize", resize);
+
+    bindHold(ui.turnLeftBtn, "left");
+    bindHold(ui.turnRightBtn, "right");
+
+    const root = document.documentElement;
+    const fullscreenSupported = !!(root.requestFullscreen || root.webkitRequestFullscreen);
+    if (!fullscreenSupported && ui.fullscreenBtn) ui.fullscreenBtn.hidden = true;
+
+    const syncFullscreenBtn = () => {
+      if (!ui.fullscreenBtn) return;
+      const active = !!document.fullscreenElement;
+      ui.fullscreenBtn.textContent = active ? "EXIT" : "FULL";
+      ui.fullscreenBtn.setAttribute("aria-pressed", String(active));
+      ui.fullscreenBtn.classList.toggle("active", active);
+      resize();
+    };
+
+    if (ui.fullscreenBtn) ui.fullscreenBtn.addEventListener("click", toggleFullscreen);
+    document.addEventListener("fullscreenchange", syncFullscreenBtn);
+    document.addEventListener("webkitfullscreenchange", syncFullscreenBtn);
+
+    if (ui.settingsBtn) ui.settingsBtn.addEventListener("click", openSettings);
+    if (ui.pauseSettingsBtn) ui.pauseSettingsBtn.addEventListener("click", openSettings);
+    if (ui.settingsCloseBtn) ui.settingsCloseBtn.addEventListener("click", closeSettings);
+    if (ui.resetBindsBtn) ui.resetBindsBtn.addEventListener("click", resetBinds);
+
+    if (ui.colorblindToggle) {
+      ui.colorblindToggle.addEventListener("change", () => {
+        setColorblind(ui.colorblindToggle.checked);
+      });
+    }
+
+    if (ui.reduceMotionToggle) {
+      ui.reduceMotionToggle.addEventListener("change", () => {
+        setReduceMotion(ui.reduceMotionToggle.checked);
+      });
+    }
+
+    if (ui.difficultyGroup) {
+      ui.difficultyGroup.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-difficulty]");
+        if (button) selectDifficulty(button.getAttribute("data-difficulty"));
+      });
+    }
 
     ui.playBtn.addEventListener("click", startRun);
     ui.againBtn.addEventListener("click", startRun);
@@ -2330,8 +3188,16 @@
     const dt = Math.min(0.05, Math.max(0, (now - lastTime) / 1000));
     lastTime = now;
 
-    if (state === "menu") menuTime += dt;
+    if (state === "menu" || state === "settings") menuTime += dt;
     if (state === "playing") update(dt);
+
+    const bossActive = game.enemies.some((enemy) => enemy.isBoss);
+    const musicLevel = state === "playing"
+      ? clamp((game.wave - 1) / 14 + game.combo / 80 + (bossActive ? 0.22 : 0), 0, 1)
+      : state === "upgrade"
+        ? 0.3
+        : 0.08;
+    Sound.setMusicIntensity(musicLevel);
 
     render();
     requestAnimationFrame(loop);
@@ -2342,8 +3208,15 @@
     updateBestUI();
     updateMuteBtn();
     renderAchievements();
+    syncSettingsUI();
     buildHealthPips();
     Sound.setMuted(muted);
+
+    ui.canvas.setAttribute(
+      "aria-label",
+      "VOLTCORE game arena. Move the pointer or drag to aim the shield, press Space for Nova, P to pause, M to mute."
+    );
+
     bindInput();
     setState("menu");
 
