@@ -1349,9 +1349,7 @@ button:focus-visible {
   }
 
   .start-panel { gap: 15px; }
-  .howto { grid-template-columns: 1fr; gap: 8px; }
-  .step { padding-top: 9px; }
-  .step span { font-size: 0.75rem; }
+  .howto { display: none; }
   .record-row { padding: 11px 8px; }
   .record-row > div { padding: 0 7px; }
   .ach { padding: 6px 8px; font-size: 0.5rem; }
@@ -1402,12 +1400,19 @@ button:focus-visible {
 @media (max-height: 620px) and (orientation: landscape) {
   .screen { align-items: center; }
   .panel { padding: 18px 22px; }
-  .start-panel { gap: 10px; }
+  .start-panel { gap: 8px; }
   .logo { font-size: clamp(3rem, 9vw, 4.6rem); }
+  .logo-rule,
+  .tagline,
   .howto { display: none; }
-  .tagline { max-width: 62ch; }
+  .record-row { padding: 8px 10px; }
   .ach-wrap { display: none; }
   .controls-line { display: none; }
+}
+
+@media (max-height: 380px) and (orientation: landscape) {
+  .record-row { display: none; }
+  .start-panel { gap: 6px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
